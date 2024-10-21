@@ -42,36 +42,101 @@ pub type QueryResult {
   Selected(col_names: List(String), rows: List(Row))
 }
 
-// Int or Float
-pub type Integer
-
-pub type SQLParam(number) {
-  SqlChar(values: List(String))
-  SqlWchar(values: List(Int))
-  SqlNumeric(values: List(number))
-  SqlDecimal(values: List(number))
-  SqlInteger(values: List(Int))
-  SqlSmallint(values: List(Int))
-  SqlFloat(values: List(Float))
-  SqlReal(values: List(Float))
-  SqlDouble(values: List(Float))
-  SqlVarchar(values: List(String))
-  SqlWvarchar(values: List(String))
-  SqlTypeDate(values: List(String))
-  SqlTypeTime(values: List(String))
-  SqlTypeTimestamp(values: List(#(#(Int, Int, Int), #(Int, Int, Int))))
-  SqlLongvarchar(values: List(String))
-  SqlWlongvarchar(values: List(String))
-  SqlBinary(values: List(String))
-  SqlVarbinary(values: List(String))
-  SqlLongvarbinary(values: List(String))
-  SqlTinyint(values: List(Int))
-  SqlBit(values: List(Bool))
+pub type ODBCType {
+  SqlChar(size: Int)
+  SqlWchar(size: Int)
+  SqlNumeric(precision: Int, scale: Int)
+  SqlDecimal(precision: Int, scale: Int)
+  SqlInteger
+  SqlSmallint
+  SqlFloat(precision: Int)
+  SqlReal
+  SqlDouble
+  SqlVarchar(size: Int)
+  SqlWvarchar(size: Int)
+  SqlTypeDate
+  SqlTypeTime
+  SqlTypeTimestamp
+  SqlLongvarchar(size: Int)
+  SqlWlongvarchar(size: Int)
+  SqlBinary
+  SqlVarbinary
+  SqlLongvarbinary
+  SqlTinyint
+  SqlBit
 }
 
 pub type Value
 
+pub type Param {
+  Char(values: List(Value), size: Int)
+  Wchar(values: List(Value), size: Int)
+  Numeric(values: List(Value), precision: Int, scale: Int)
+  Decimal(values: List(Value), precision: Int, scale: Int)
+  Integer(values: List(Value))
+  Smallint(values: List(Value))
+  Float(values: List(Value), precision: Int)
+  Real(values: List(Value))
+  Double(values: List(Value))
+  Varchar(values: List(Value), size: Int)
+  Wvarchar(values: List(Value), size: Int)
+  Date(values: List(Value))
+  Time(values: List(Value))
+  Timestamp(values: List(Value))
+  Longvarchar(values: List(Value), size: Int)
+  Wlongvarchar(values: List(Value), size: Int)
+  Binary(values: List(Value))
+  Varbinary(values: List(Value))
+  Longvarbinary(values: List(Value))
+  Tinyint(values: List(Value))
+  Bit(values: List(Value))
+}
+
 // functions
+@external(erlang, "glodbc_ffi_erl", "null")
+pub fn null() -> Value
+
+@external(erlang, "glodbc_ffi_erl", "coerce")
+pub fn bool(bool: Bool) -> Value
+
+@external(erlang, "glodbc_ffi_erl", "coerce")
+pub fn int(int: Int) -> Value
+
+@external(erlang, "glodbc_ffi_erl", "coerce")
+pub fn float(float: Float) -> Value
+
+/// any string
+@external(erlang, "glodbc_ffi_erl", "text")
+pub fn text(text: String) -> Value
+
+@external(erlang, "glodbc_ffi_erl", "coerce")
+pub fn timesstap(timesstap: #(#(Int, Int, Int), #(Int, Int, Int))) -> Value
+
+fn convert_to_erl(param: Param) -> #(ODBCType, List(Value)) {
+  case param {
+    Char(vals, size) -> #(SqlChar(size), vals)
+    Wchar(vals, size) -> #(SqlWchar(size), vals)
+    Varchar(vals, size) -> #(SqlVarchar(size), vals)
+    Longvarchar(vals, size) -> #(SqlLongvarchar(size), vals)
+    Wvarchar(vals, size) -> #(SqlWvarchar(size), vals)
+    Wlongvarchar(vals, size) -> #(SqlWlongvarchar(size), vals)
+    Numeric(vals, prec, scale) -> #(SqlNumeric(prec, scale), vals)
+    Decimal(vals, prec, scale) -> #(SqlDecimal(prec, scale), vals)
+    Float(vals, prec) -> #(SqlFloat(prec), vals)
+    Binary(vals) -> #(SqlBinary, vals)
+    Varbinary(vals) -> #(SqlVarbinary, vals)
+    Longvarbinary(vals) -> #(SqlLongvarbinary, vals)
+    Date(vals) -> #(SqlTypeDate, vals)
+    Time(vals) -> #(SqlTypeTime, vals)
+    Timestamp(vals) -> #(SqlTypeTimestamp, vals)
+    Integer(vals) -> #(SqlInteger, vals)
+    Smallint(vals) -> #(SqlSmallint, vals)
+    Real(vals) -> #(SqlReal, vals)
+    Double(vals) -> #(SqlDouble, vals)
+    Tinyint(vals) -> #(SqlTinyint, vals)
+    Bit(vals) -> #(SqlBit, vals)
+  }
+}
 
 fn bool_to_onoff(b: Bool) -> OptionSwitch {
   case b {
@@ -140,8 +205,9 @@ pub fn sql_query(
 pub fn param_query(
   connection: Connection,
   sql_query: String,
-  params: List(SQLParam(number)),
+  params: List(Param),
 ) -> Result(QueryResult, ODBCError) {
+  let params = list.map(params, convert_to_erl)
   case odbc_param_query(connection, sql_query, params) {
     Error(_) -> Error(QueryError)
     result -> result
@@ -168,9 +234,9 @@ pub fn main() {
     )
 
   let res =
-    param_query(conn, "Select age from test.testtable where id=? and name=?", [
-      SqlInteger([1]),
-      SqlVarchar(["Jonas"]),
+    param_query(conn, "Select age from test.testtable where id=?", [
+      Integer([int(1)]),
+      Varchar([text("Jonas")], 100),
     ])
   let _ = io.debug(res)
 
