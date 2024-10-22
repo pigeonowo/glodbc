@@ -17,13 +17,9 @@ sql_query(Connection, SQL_Query) ->
             {ok, {selected, Binary_Names, Rows}}
     end.
 
-bin_to_list_if_bin(X) when is_binary(X) ->  
-    binary_to_list(X);
-bin_to_list_if_bin(X) -> X.
-
-param_query(Connection, SQL_Query, Params) ->
-    io:format("Params: ~p~n", [Params]),
-    case odbc:param_query(Connection, SQL_Query, [Params]) of
+param_query(Connection, SQL_Query, Params) when is_pid(Connection), is_list(SQL_Query), is_list(Params) ->
+    %% io:format("Params: ~p~n", Params), % fails when called with params?? not an erlang type expert
+    case odbc:param_query(Connection, SQL_Query, Params) of
         {error, E} -> {error, E};
         {updated, Rows} -> {ok, {updated, Rows}};
         {selected, Col_Names, Rows} -> 

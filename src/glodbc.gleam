@@ -208,7 +208,7 @@ pub fn param_query(
   params: List(Param),
 ) -> Result(QueryResult, ODBCError) {
   let params = list.map(params, convert_to_erl)
-  case odbc_param_query(connection, sql_query, params) {
+  case odbc_param_query(connection, charlist.from_string(sql_query), params) {
     Error(_) -> Error(QueryError)
     result -> result
   }
