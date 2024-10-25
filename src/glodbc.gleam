@@ -2,9 +2,6 @@ import gleam/dict
 import gleam/erlang/charlist
 import gleam/io
 import gleam/list
-import glodbc_ffi.{
-  odbc_connect, odbc_disconnect, odbc_param_query, odbc_sql_query, odbc_start,
-}
 
 pub type Connection
 
@@ -14,6 +11,11 @@ pub type Row
 pub type OptionSwitch {
   On
   Off
+}
+
+pub type ODBCCommitMode {
+  Commit
+  Rollback
 }
 
 pub type ODBCOption {
@@ -35,6 +37,16 @@ pub type ODBCError {
   ConnectionError
   DisconnectionError
   QueryError
+  CommitError
+  DescribeTableError
+  SelectError
+  SelectCountError
+}
+
+pub type ODBCSelectPosition {
+  Next
+  Relative(n: Int)
+  Absolute(n: Int)
 }
 
 pub type QueryResult {
@@ -66,6 +78,10 @@ pub type ODBCType {
   SqlBit
 }
 
+pub type ODBCDescription {
+  Description(name: String, datatype: ODBCType)
+}
+
 pub type Value
 
 pub type Param {
@@ -93,6 +109,7 @@ pub type Param {
 }
 
 // functions
+
 @external(erlang, "glodbc_ffi_erl", "null")
 pub fn null() -> Value
 
@@ -111,6 +128,67 @@ pub fn text(text: String) -> Value
 
 @external(erlang, "glodbc_ffi_erl", "coerce")
 pub fn timesstap(timesstap: #(#(Int, Int, Int), #(Int, Int, Int))) -> Value
+
+// timeout?
+@external(erlang, "glodbc_ffi_erl", "sql_query")
+pub fn odbc_sql_query(connection: Connection, sql_query: query) -> queryresult
+
+//timeout?
+@external(erlang, "glodbc_ffi_erl", "param_query")
+pub fn odbc_param_query(
+  connection: Connection,
+  sql_query: query,
+  query_params: params,
+) -> queryresult
+
+@external(erlang, "odbc", "connect")
+pub fn odbc_connect(
+  connection_string: connstring,
+  options: options,
+) -> odbcresult
+
+@external(erlang, "odbc", "disconnect")
+pub fn odbc_disconnect(connection: Connection) -> odbcresult
+
+@external(erlang, "odbc", "start")
+pub fn odbc_start() -> odbcresult
+
+@external(erlang, "odbc", "commit")
+pub fn odbc_commit(connection: Connection, commit_mode: mode) -> odbcresult
+
+@external(erlang, "odbc", "first")
+pub fn odbc_first(connection: Connection) -> queryresult
+
+@external(erlang, "odbc", "last")
+pub fn odbc_last(connection: Connection) -> queryresult
+
+@external(erlang, "odbc", "next")
+pub fn odbc_next(connection: Connection) -> queryresult
+
+@external(erlang, "odbc", "prev")
+pub fn odbc_prev(connection: Connection) -> queryresult
+
+@external(erlang, "odbc", "select")
+pub fn odbc_select(
+  conn: Connection,
+  pos: ODBCSelectPosition,
+  n: Int,
+) -> selectresult
+
+@external(erlang, "odbc", "select_count")
+pub fn odbc_select_count(
+  conn: Connection,
+  query: query,
+) -> Result(Int, ODBCError)
+
+@external(erlang, "odbc", "describe_table")
+pub fn odbc_describe_table(
+  connection: conn,
+  table: table,
+) -> Result(List(#(name, datatype)), ODBCError)
+
+@external(erlang, "glodbc_ffi_erl", "convert_odbcdescription")
+pub fn convert_odbcdescription(description: desc) -> ODBCDescription
 
 fn convert_to_erl(param: Param) -> #(ODBCType, List(Value)) {
   case param {
@@ -214,9 +292,50 @@ pub fn param_query(
   }
 }
 
+pub fn commit(
+  connection: Connection,
+  commit_mode: ODBCCommitMode,
+) -> Result(ODBCSuccess, ODBCError) {
+  case odbc_commit(connection, commit_mode) {
+    Error(_) -> Error(CommitError)
+    _ -> Ok(ODBCOk)
+  }
+}
+
+pub fn describe_table(
+  conn: Connection,
+  table: String,
+) -> Result(List(ODBCDescription), ODBCError) {
+  let charlist_table = charlist.from_string(table)
+  case odbc_describe_table(conn, charlist_table) {
+    Ok(description) -> {
+      Ok(list.map(description, convert_odbcdescription))
+    }
+    Error(_) -> Error(DescribeTableError)
+  }
+}
+
+pub fn select(conn: Connection, position: ODBCSelectPosition, n: Int) {
+  case odbc_select(conn, position, n) {
+    Error(err) -> {
+      let _ = io.debug(err)
+      Error(SelectError)
+    }
+    selected -> Ok(selected)
+  }
+}
+
+pub fn select_count(conn: Connection, query: String) -> Result(Int, ODBCError) {
+  case odbc_select_count(conn, query) {
+    Error(_) -> Error(SelectCountError)
+    rows -> rows
+  }
+}
+
 // test
 
 pub fn main() {
+  // Testing with MariaDB, other ODBC Databases work too of course! Just have the right driver!
   let connstring =
     "Driver={MariaDB ODBC 3.0 Driver};DSN=localhost;UID=testuser;PWD=password"
   let assert Ok(conn) = connect(connstring, [#(AutoCommit, True)])
@@ -227,18 +346,23 @@ pub fn main() {
   let assert Ok(Updated(_rowcount)) =
     sql_query(conn, "Update test.testtable set name='Fred' where id=1")
 
-  let _res =
+  let assert Ok(Updated(_rowcount)) =
     sql_query(
       conn,
       "Insert into test.testtable (id, name, age) values (2, 'Jonas', 18)",
     )
 
-  let res =
+  let assert Ok(Selected(_col_names, _rows)) =
     param_query(conn, "Select age from test.testtable where id=?", [
       Integer([int(1)]),
       Varchar([text("Jonas")], 100),
     ])
-  let _ = io.debug(res)
+
+  let assert Ok(ODBCOk) = commit(conn, Commit)
+  // or Rollback
+
+  let assert Ok(_tabledescription) = describe_table(conn, "test.testtable")
+  // -> [Description("id", SqlInteger), Description("name", SqlVarchar(100)), Description("age", SqlInteger)]
 
   let assert Ok(ODBCOk) = disconnect(conn)
 }

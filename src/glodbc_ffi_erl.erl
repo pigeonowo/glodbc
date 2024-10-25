@@ -1,9 +1,12 @@
 -module(glodbc_ffi_erl).
--export([sql_query/2, param_query/3, coerce/1, null/0, text/1]).
+-export([sql_query/2, param_query/3, coerce/1, null/0, text/1, convert_odbcdescription/1]).
 
 null() -> null.
 
 coerce(Value) -> Value.
+
+convert_odbcdescription({Name, Type}) ->
+    {description, list_to_binary(Name), Type}.
 
 text(Bin) when is_binary(Bin) ->
     binary_to_list(Bin). 

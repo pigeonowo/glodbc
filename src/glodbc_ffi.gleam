@@ -21,6 +21,9 @@ pub fn odbc_param_query(
   sql_query: query,
   query_params: params,
 ) -> queryresult
+
+@external(erlang, "odbc", "commit")
+pub fn odbc_commit(connection: conn, commit_mode: mode) -> odbcresult
 // TODO
 // commit
 // describe_table
