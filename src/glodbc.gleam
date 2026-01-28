@@ -2,15 +2,25 @@ import gleam/dict
 import gleam/erlang/charlist
 import gleam/io
 import gleam/list
-
-pub type Connection
+import glodbc_ffi.{
+  type Connection, type ODBCDescription, type ODBCError, type ODBCSelectPosition,
+  type ODBCType, type Value, coerce, convert_odbcdescription, odbc_commit,
+  odbc_connect, odbc_describe_table, odbc_disconnect, odbc_param_query,
+  odbc_select, odbc_select_count, odbc_sql_query, odbc_start,
+}
 
 pub type Row
 
-// Types
 pub type OptionSwitch {
   On
   Off
+}
+
+fn bool_to_onoff(b: Bool) -> OptionSwitch {
+  case b {
+    True -> On
+    False -> Off
+  }
 }
 
 pub type ODBCCommitMode {
@@ -33,58 +43,12 @@ pub type ODBCSuccess {
   ODBCOk
 }
 
-pub type ODBCError {
-  ConnectionError
-  DisconnectionError
-  QueryError
-  CommitError
-  DescribeTableError
-  SelectError
-  SelectCountError
-}
-
-pub type ODBCSelectPosition {
-  Next
-  Relative(n: Int)
-  Absolute(n: Int)
-}
-
 pub type QueryResult {
   Updated(rows: Int)
   Selected(col_names: List(String), rows: List(Row))
 }
 
-pub type ODBCType {
-  SqlChar(size: Int)
-  SqlWchar(size: Int)
-  SqlNumeric(precision: Int, scale: Int)
-  SqlDecimal(precision: Int, scale: Int)
-  SqlInteger
-  SqlSmallint
-  SqlFloat(precision: Int)
-  SqlReal
-  SqlDouble
-  SqlVarchar(size: Int)
-  SqlWvarchar(size: Int)
-  SqlTypeDate
-  SqlTypeTime
-  SqlTypeTimestamp
-  SqlLongvarchar(size: Int)
-  SqlWlongvarchar(size: Int)
-  SqlBinary
-  SqlVarbinary
-  SqlLongvarbinary
-  SqlTinyint
-  SqlBit
-}
-
-pub type ODBCDescription {
-  Description(name: String, datatype: ODBCType)
-}
-
-pub type Value
-
-pub type Param {
+pub type ODBCQueryParam {
   Char(values: List(Value), size: Int)
   Wchar(values: List(Value), size: Int)
   Numeric(values: List(Value), precision: Int, scale: Int)
@@ -108,119 +72,114 @@ pub type Param {
   Bit(values: List(Value))
 }
 
-// functions
-
-@external(erlang, "glodbc_ffi_erl", "null")
-pub fn null() -> Value
-
-@external(erlang, "glodbc_ffi_erl", "coerce")
-pub fn bool(bool: Bool) -> Value
-
-@external(erlang, "glodbc_ffi_erl", "coerce")
-pub fn int(int: Int) -> Value
-
-@external(erlang, "glodbc_ffi_erl", "coerce")
-pub fn float(float: Float) -> Value
-
-/// any string
-@external(erlang, "glodbc_ffi_erl", "text")
-pub fn text(text: String) -> Value
-
-@external(erlang, "glodbc_ffi_erl", "coerce")
-pub fn timesstap(timesstap: #(#(Int, Int, Int), #(Int, Int, Int))) -> Value
-
-// timeout?
-@external(erlang, "glodbc_ffi_erl", "sql_query")
-pub fn odbc_sql_query(connection: Connection, sql_query: query) -> queryresult
-
-//timeout?
-@external(erlang, "glodbc_ffi_erl", "param_query")
-pub fn odbc_param_query(
-  connection: Connection,
-  sql_query: query,
-  query_params: params,
-) -> queryresult
-
-@external(erlang, "odbc", "connect")
-pub fn odbc_connect(
-  connection_string: connstring,
-  options: options,
-) -> odbcresult
-
-@external(erlang, "odbc", "disconnect")
-pub fn odbc_disconnect(connection: Connection) -> odbcresult
-
-@external(erlang, "odbc", "start")
-pub fn odbc_start() -> odbcresult
-
-@external(erlang, "odbc", "commit")
-pub fn odbc_commit(connection: Connection, commit_mode: mode) -> odbcresult
-
-@external(erlang, "odbc", "first")
-pub fn odbc_first(connection: Connection) -> queryresult
-
-@external(erlang, "odbc", "last")
-pub fn odbc_last(connection: Connection) -> queryresult
-
-@external(erlang, "odbc", "next")
-pub fn odbc_next(connection: Connection) -> queryresult
-
-@external(erlang, "odbc", "prev")
-pub fn odbc_prev(connection: Connection) -> queryresult
-
-@external(erlang, "odbc", "select")
-pub fn odbc_select(
-  conn: Connection,
-  pos: ODBCSelectPosition,
-  n: Int,
-) -> selectresult
-
-@external(erlang, "odbc", "select_count")
-pub fn odbc_select_count(
-  conn: Connection,
-  query: query,
-) -> Result(Int, ODBCError)
-
-@external(erlang, "odbc", "describe_table")
-pub fn odbc_describe_table(
-  connection: conn,
-  table: table,
-) -> Result(List(#(name, datatype)), ODBCError)
-
-@external(erlang, "glodbc_ffi_erl", "convert_odbcdescription")
-pub fn convert_odbcdescription(description: desc) -> ODBCDescription
-
-fn convert_to_erl(param: Param) -> #(ODBCType, List(Value)) {
+fn convert_to_erl(param: ODBCQueryParam) -> #(ODBCType, List(Value)) {
   case param {
-    Char(vals, size) -> #(SqlChar(size), vals)
-    Wchar(vals, size) -> #(SqlWchar(size), vals)
-    Varchar(vals, size) -> #(SqlVarchar(size), vals)
-    Longvarchar(vals, size) -> #(SqlLongvarchar(size), vals)
-    Wvarchar(vals, size) -> #(SqlWvarchar(size), vals)
-    Wlongvarchar(vals, size) -> #(SqlWlongvarchar(size), vals)
-    Numeric(vals, prec, scale) -> #(SqlNumeric(prec, scale), vals)
-    Decimal(vals, prec, scale) -> #(SqlDecimal(prec, scale), vals)
-    Float(vals, prec) -> #(SqlFloat(prec), vals)
-    Binary(vals) -> #(SqlBinary, vals)
-    Varbinary(vals) -> #(SqlVarbinary, vals)
-    Longvarbinary(vals) -> #(SqlLongvarbinary, vals)
-    Date(vals) -> #(SqlTypeDate, vals)
-    Time(vals) -> #(SqlTypeTime, vals)
-    Timestamp(vals) -> #(SqlTypeTimestamp, vals)
-    Integer(vals) -> #(SqlInteger, vals)
-    Smallint(vals) -> #(SqlSmallint, vals)
-    Real(vals) -> #(SqlReal, vals)
-    Double(vals) -> #(SqlDouble, vals)
-    Tinyint(vals) -> #(SqlTinyint, vals)
-    Bit(vals) -> #(SqlBit, vals)
+    Char(vals, size) -> #(glodbc_ffi.SqlChar(size), vals)
+    Wchar(vals, size) -> #(glodbc_ffi.SqlWchar(size), vals)
+    Varchar(vals, size) -> #(glodbc_ffi.SqlVarchar(size), vals)
+    Longvarchar(vals, size) -> #(glodbc_ffi.SqlLongvarchar(size), vals)
+    Wvarchar(vals, size) -> #(glodbc_ffi.SqlWvarchar(size), vals)
+    Wlongvarchar(vals, size) -> #(glodbc_ffi.SqlWlongvarchar(size), vals)
+    Numeric(vals, prec, scale) -> #(glodbc_ffi.SqlNumeric(prec, scale), vals)
+    Decimal(vals, prec, scale) -> #(glodbc_ffi.SqlDecimal(prec, scale), vals)
+    Float(vals, prec) -> #(glodbc_ffi.SqlFloat(prec), vals)
+    Binary(vals) -> #(glodbc_ffi.SqlBinary, vals)
+    Varbinary(vals) -> #(glodbc_ffi.SqlVarbinary, vals)
+    Longvarbinary(vals) -> #(glodbc_ffi.SqlLongvarbinary, vals)
+    Date(vals) -> #(glodbc_ffi.SqlTypeDate, vals)
+    Time(vals) -> #(glodbc_ffi.SqlTypeTime, vals)
+    Timestamp(vals) -> #(glodbc_ffi.SqlTypeTimestamp, vals)
+    Integer(vals) -> #(glodbc_ffi.SqlInteger, vals)
+    Smallint(vals) -> #(glodbc_ffi.SqlSmallint, vals)
+    Real(vals) -> #(glodbc_ffi.SqlReal, vals)
+    Double(vals) -> #(glodbc_ffi.SqlDouble, vals)
+    Tinyint(vals) -> #(glodbc_ffi.SqlTinyint, vals)
+    Bit(vals) -> #(glodbc_ffi.SqlBit, vals)
   }
 }
 
-fn bool_to_onoff(b: Bool) -> OptionSwitch {
-  case b {
-    True -> On
-    False -> Off
-  }
+pub fn char(c: String, size: Int) -> ODBCQueryParam {
+  Char([coerce(c)], size)
+}
+
+pub fn wchar(s: String, size: Int) -> ODBCQueryParam {
+  Wchar([coerce(s)], size)
+}
+
+pub fn varchar(s: String, size: Int) -> ODBCQueryParam {
+  Varchar([coerce(s)], size)
+}
+
+pub fn longvarchar(s: String, size: Int) -> ODBCQueryParam {
+  Longvarchar([coerce(s)], size)
+}
+
+pub fn wvarchar(s: String, size: Int) -> ODBCQueryParam {
+  Wvarchar([coerce(s)], size)
+}
+
+pub fn wlongvarchar(s: String, size: Int) -> ODBCQueryParam {
+  Wlongvarchar([coerce(s)], size)
+}
+
+pub fn numeric(i: numeric, prec: Int, size: Int) -> ODBCQueryParam {
+  Numeric([coerce(i)], prec, size)
+}
+
+pub fn decimal(i: Float, prec: Int, size: Int) -> ODBCQueryParam {
+  Decimal([coerce(i)], prec, size)
+}
+
+pub fn float(i: Float, prec: Int) -> ODBCQueryParam {
+  Float([coerce(i)], prec)
+}
+
+pub fn binary(s: String) -> ODBCQueryParam {
+  Binary([coerce(s)])
+}
+
+pub fn varbinary(s: String) -> ODBCQueryParam {
+  Varbinary([coerce(s)])
+}
+
+pub fn longvarbinary(s: String) -> ODBCQueryParam {
+  Longvarbinary([coerce(s)])
+}
+
+pub fn date(s: String) -> ODBCQueryParam {
+  Date([coerce(s)])
+}
+
+pub fn time(s: String) -> ODBCQueryParam {
+  Time([coerce(s)])
+}
+
+pub fn timestamp(dt: #(#(Int, Int, Int), #(Int, Int, Int))) -> ODBCQueryParam {
+  Timestamp([coerce(dt)])
+}
+
+pub fn integer(i: Int) -> ODBCQueryParam {
+  Integer([coerce(i)])
+}
+
+pub fn smallint(i: Int) -> ODBCQueryParam {
+  Smallint([coerce(i)])
+}
+
+pub fn real(i: Int) -> ODBCQueryParam {
+  Real([coerce(i)])
+}
+
+pub fn double(i: Int) -> ODBCQueryParam {
+  Double([coerce(i)])
+}
+
+pub fn tinyint(i: Int) -> ODBCQueryParam {
+  Tinyint([coerce(i)])
+}
+
+pub fn bit(i: Int) -> ODBCQueryParam {
+  Bit([coerce(i)])
 }
 
 pub fn default_options() {
@@ -258,14 +217,14 @@ pub fn connect(
     Ok(conn) -> Ok(conn)
     Error(e) -> {
       io.debug(charlist.to_string(e))
-      Error(ConnectionError)
+      Error(glodbc_ffi.ConnectionError)
     }
   }
 }
 
 pub fn disconnect(connection: Connection) -> Result(ODBCSuccess, ODBCError) {
   case odbc_disconnect(connection) {
-    Error(_) -> Error(DisconnectionError)
+    Error(_) -> Error(glodbc_ffi.DisconnectionError)
     _ -> Ok(ODBCOk)
   }
 }
@@ -275,19 +234,108 @@ pub fn sql_query(
   sql_query: String,
 ) -> Result(QueryResult, ODBCError) {
   case odbc_sql_query(connection, charlist.from_string(sql_query)) {
-    Error(_) -> Error(QueryError)
+    Error(_) -> Error(glodbc_ffi.QueryError)
     result -> result
   }
+}
+
+fn all_same_length(lists) {
+  case lists {
+    [] -> True
+    [list, ..lists] -> {
+      let desired = list.length(list)
+      list.all(lists, fn(list) { list.length(list) == desired })
+    }
+  }
+}
+
+/// I know now a good name but its NOT for public use :)
+/// asserts that each row is the same length and is not empty
+pub fn paramlist_to_erlparamlist(
+  paramlist: List(List(ODBCQueryParam)),
+) -> List(ODBCQueryParam) {
+  // all list not empty
+  assert paramlist |> list.map(list.length) |> list.all(fn(x) { x != 0 })
+  // all list same length
+  assert paramlist |> all_same_length()
+
+  let values =
+    paramlist
+    |> list.map(fn(x) {
+      list.map(x, fn(y) {
+        case y {
+          Char(vals, _) -> vals
+          Binary(vals) -> vals
+          Bit(vals) -> vals
+          Date(vals) -> vals
+          Decimal(vals, _, _) -> vals
+          Double(vals) -> vals
+          Float(vals, _) -> vals
+          Integer(vals) -> vals
+          Longvarbinary(vals) -> vals
+          Longvarchar(vals, _) -> vals
+          Numeric(vals, _, _) -> vals
+          Real(vals) -> vals
+          Smallint(vals) -> vals
+          Time(vals) -> vals
+          Timestamp(vals) -> vals
+          Tinyint(vals) -> vals
+          Varbinary(vals) -> vals
+          Varchar(vals, _) -> vals
+          Wchar(vals, _) -> vals
+          Wlongvarchar(vals, _) -> vals
+          Wvarchar(vals, _) -> vals
+        }
+      })
+    })
+    |> list.transpose()
+    |> list.map(list.flatten)
+
+  let types = paramlist |> list.transpose()
+
+  list.zip(values, types)
+  |> list.map(fn(x) {
+    let assert Ok(t) = list.first(x.1)
+    case t {
+      Binary(_) -> Binary(x.0)
+      Bit(_) -> Bit(x.0)
+      Char(_, s) -> Char(x.0, s)
+      Date(_) -> Date(x.0)
+      Decimal(_, p, s) -> Decimal(x.0, p, s)
+      Double(_) -> Double(x.0)
+      Float(_, p) -> Float(x.0, p)
+      Integer(_) -> Integer(x.0)
+      Longvarbinary(_) -> Longvarbinary(x.0)
+      Longvarchar(_, s) -> Longvarchar(x.0, s)
+      Numeric(_, p, s) -> Numeric(x.0, p, s)
+      Real(_) -> Real(x.0)
+      Smallint(_) -> Smallint(x.0)
+      Time(_) -> Time(x.0)
+      Timestamp(_) -> Timestamp(x.0)
+      Tinyint(_) -> Tinyint(x.0)
+      Varbinary(_) -> Varbinary(x.0)
+      Varchar(_, s) -> Varchar(x.0, s)
+      Wchar(_, s) -> Wchar(x.0, s)
+      Wlongvarchar(_, s) -> Wlongvarchar(x.0, s)
+      Wvarchar(_, s) -> Wvarchar(x.0, s)
+    }
+  })
 }
 
 pub fn param_query(
   connection: Connection,
   sql_query: String,
-  params: List(Param),
+  params: List(List(ODBCQueryParam)),
 ) -> Result(QueryResult, ODBCError) {
-  let params = list.map(params, convert_to_erl)
-  case odbc_param_query(connection, charlist.from_string(sql_query), params) {
-    Error(_) -> Error(QueryError)
+  let erl_params =
+    params
+    |> paramlist_to_erlparamlist
+    |> list.map(convert_to_erl)
+
+  case
+    odbc_param_query(connection, charlist.from_string(sql_query), erl_params)
+  {
+    Error(_) -> Error(glodbc_ffi.QueryError)
     result -> result
   }
 }
@@ -297,7 +345,7 @@ pub fn commit(
   commit_mode: ODBCCommitMode,
 ) -> Result(ODBCSuccess, ODBCError) {
   case odbc_commit(connection, commit_mode) {
-    Error(_) -> Error(CommitError)
+    Error(_) -> Error(glodbc_ffi.CommitError)
     _ -> Ok(ODBCOk)
   }
 }
@@ -311,7 +359,7 @@ pub fn describe_table(
     Ok(description) -> {
       Ok(list.map(description, convert_odbcdescription))
     }
-    Error(_) -> Error(DescribeTableError)
+    Error(_) -> Error(glodbc_ffi.DescribeTableError)
   }
 }
 
@@ -319,7 +367,7 @@ pub fn select(conn: Connection, position: ODBCSelectPosition, n: Int) {
   case odbc_select(conn, position, n) {
     Error(err) -> {
       let _ = io.debug(err)
-      Error(SelectError)
+      Error(glodbc_ffi.SelectError)
     }
     selected -> Ok(selected)
   }
@@ -327,42 +375,7 @@ pub fn select(conn: Connection, position: ODBCSelectPosition, n: Int) {
 
 pub fn select_count(conn: Connection, query: String) -> Result(Int, ODBCError) {
   case odbc_select_count(conn, query) {
-    Error(_) -> Error(SelectCountError)
+    Error(_) -> Error(glodbc_ffi.SelectCountError)
     rows -> rows
   }
-}
-
-// test
-
-pub fn main() {
-  // Testing with MariaDB, other ODBC Databases work too of course! Just have the right driver!
-  let connstring =
-    "Driver={MariaDB ODBC 3.0 Driver};DSN=localhost;UID=testuser;PWD=password"
-  let assert Ok(conn) = connect(connstring, [#(AutoCommit, True)])
-
-  let assert Ok(Selected(_col_names, _rows)) =
-    sql_query(conn, "Select * from test.testtable;")
-
-  let assert Ok(Updated(_rowcount)) =
-    sql_query(conn, "Update test.testtable set name='Fred' where id=1")
-
-  let assert Ok(Updated(_rowcount)) =
-    sql_query(
-      conn,
-      "Insert into test.testtable (id, name, age) values (2, 'Jonas', 18)",
-    )
-
-  let assert Ok(Selected(_col_names, _rows)) =
-    param_query(conn, "Select age from test.testtable where id=?", [
-      Integer([int(1)]),
-      Varchar([text("Jonas")], 100),
-    ])
-
-  let assert Ok(ODBCOk) = commit(conn, Commit)
-  // or Rollback
-
-  let assert Ok(_tabledescription) = describe_table(conn, "test.testtable")
-  // -> [Description("id", SqlInteger), Description("name", SqlVarchar(100)), Description("age", SqlInteger)]
-
-  let assert Ok(ODBCOk) = disconnect(conn)
 }
