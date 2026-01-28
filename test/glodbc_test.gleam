@@ -1,7 +1,7 @@
 import gleeunit
 import gleeunit/should
 import glodbc
-import glodbc_ffi
+import glodbc/glodbc_ffi
 
 pub fn main() {
   gleeunit.main()

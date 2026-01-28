@@ -2,7 +2,7 @@ import gleam/dict
 import gleam/erlang/charlist
 import gleam/io
 import gleam/list
-import glodbc_ffi.{
+import glodbc/glodbc_ffi.{
   type Connection, type ODBCDescription, type ODBCError, type ODBCSelectPosition,
   type ODBCType, type Value, coerce, convert_odbcdescription, odbc_commit,
   odbc_connect, odbc_describe_table, odbc_disconnect, odbc_param_query,
@@ -378,4 +378,37 @@ pub fn select_count(conn: Connection, query: String) -> Result(Int, ODBCError) {
     Error(_) -> Error(glodbc_ffi.SelectCountError)
     rows -> rows
   }
+}
+
+pub fn main() {
+  // Testing with MariaDB, other ODBC Databases work too of course! Just have the right driver!
+  let connstring =
+    "Driver={MariaDB ODBC Driver};DATABASE=testdb;DSN=localhost;PORT=3306;UID=testuser;PWD=test;"
+  let assert Ok(conn) = connect(connstring, [#(AutoCommit, True)])
+
+  let assert Ok(Selected(_col_names, _rows)) =
+    sql_query(conn, "Select * from testtable;")
+
+  let assert Ok(Updated(_rowcount)) =
+    sql_query(conn, "Update testtable set name='Fred' where id=1")
+
+  let assert Ok(Updated(_rowcount)) =
+    sql_query(
+      conn,
+      "Insert into testtable (id, name, age) values (2, 'Jonas', 18)",
+    )
+
+  let assert Ok(Selected(_col_names, _rows)) =
+    param_query(conn, "Select age from testtable where name=? and id=?", [
+      [varchar("Fred", 100), integer(1)],
+      [varchar("Jonas", 100), integer(2)],
+    ])
+
+  let assert Ok(ODBCOk) = commit(conn, Commit)
+  // or Rollback
+
+  let assert Ok(_tabledescription) = describe_table(conn, "testtable")
+  // -> [Description("id", SqlInteger), Description("name", SqlVarchar(100)), Description("age", SqlInteger)]
+
+  let assert Ok(ODBCOk) = disconnect(conn)
 }
