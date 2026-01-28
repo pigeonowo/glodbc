@@ -3,9 +3,13 @@
 [![Package Version](https://img.shields.io/hexpm/v/glodbc)](https://hex.pm/packages/glodbc)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/glodbc/)
 
+Gleam ODBC Library that is based on the odbc erlang library.
+
 ```sh
 gleam add glodbc@1
 ```
+
+Example Usage
 ```gleam
 import glodbc
 
@@ -35,7 +39,8 @@ pub fn main() {
   let _ = io.debug(res)
 
   let assert Ok(ODBCOk) = disconnect(conn)
-}```
+}
+```
 
 Further documentation can be found at <https://hexdocs.pm/glodbc>.
 
